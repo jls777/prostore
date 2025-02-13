@@ -2,10 +2,28 @@
 
 import { cookies } from "next/headers";
 import { CartItem } from "@/types";
-import { convertToPlainObject, formatError } from "../utils";
+import { convertToPlainObject, formatError, round2 } from "../utils";
 import { auth } from "@/auth";
 import { prisma } from "@/db/prisma";
-import { cartItemSchema } from "../validators";
+import { cartItemSchema, insertCartSchema } from "../validators";
+import { revalidatePath } from "next/cache";
+
+//calculate cart prices
+const calcPrice = (items: CartItem[]) => {
+  const itemsPrice = round2(
+      items.reduce((acc, item) => acc + Number(item.price) * item.qty, 0)
+    ),
+    shippingPrice = round2(itemsPrice > 100 ? 0 : 10),
+    taxPrice = round2(0.15 * itemsPrice),
+    totalPrice = round2(itemsPrice + taxPrice + shippingPrice);
+
+  return {
+    itemsPrice: itemsPrice.toFixed(2),
+    shippingPrice: shippingPrice.toFixed(2),
+    taxPrice: taxPrice.toFixed(2),
+    totalPrice: totalPrice.toFixed(2),
+  };
+};
 
 export async function addItemToCart(data: CartItem) {
   try {
@@ -28,17 +46,30 @@ export async function addItemToCart(data: CartItem) {
       where: { id: item.productId },
     });
 
-    //testing
-    console.log({
-      "Session Cart ID": sessionCartId,
-      "User ID": userId,
-      "Item requested": item,
-      "Product found": product,
-    });
-    return {
-      success: true,
-      message: "Item added to cart",
-    };
+    if (!product) throw new Error("Product not found");
+
+    if (!cart) {
+      //create new cart object
+      const newCart = insertCartSchema.parse({
+        userId: userId,
+        items: [item],
+        sessionCartId: sessionCartId,
+        ...calcPrice([item]),
+      });
+
+      //add to database
+      await prisma.cart.create({
+        data: newCart,
+      });
+
+      //revalidate product page
+      revalidatePath(`/product/${product.slug}`);
+
+      return {
+        success: true,
+        message: "Item added to cart",
+      };
+    }
   } catch (error) {
     return {
       success: false,

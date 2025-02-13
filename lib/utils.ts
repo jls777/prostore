@@ -22,7 +22,7 @@ export async function formatError(error: any) {
   if (error.name === "ZodError") {
     //handle zod error
     const fieldErrors = Object.keys(error.errors).map(
-      (field) => error.erros[field].message
+      (field) => error.errors[field].message
     );
 
     return fieldErrors.join(". ");
@@ -38,5 +38,16 @@ export async function formatError(error: any) {
     return typeof error.message === "string"
       ? error.message
       : JSON.stringify(error.message);
+  }
+}
+
+//Round number to 2 decimal places
+export function round2(value: number | string) {
+  if (typeof value === "number") {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+  } else if (typeof value === "string") {
+    return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  } else {
+    throw new Error("value is not a number or a string");
   }
 }
